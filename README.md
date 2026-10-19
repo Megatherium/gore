@@ -89,44 +89,40 @@ sudo dnf install {package}
 
 ## Self-Hosting
 
-Feel free to use my instance at reprox.dev, or run your own instance on Cloudflare Workers:
+Feel free to use my instance at reprox.dev, or run your own instance with Go or Docker:
 
 ### Prerequisites
 
-- Node.js 18+
-- A [Cloudflare account](https://dash.cloudflare.com/sign-up)
+- Go 1.24+ (or Docker / Podman)
 - GPG (for generating signing keys)
 
 ### Quick Start
 
 ```bash
-# Clone and install
-git clone git@github.com:leoherzog/reprox.git && cd reprox && npm install
+# Clone repository
+git clone https://github.com/leoherzog/reprox.git && cd reprox
 
-# Login to Cloudflare
-npx wrangler login
+# Build and run with Go
+make build
+GPG_PRIVATE_KEY="$(cat /path/to/private-key.asc)" ./reprox
 
-# Generate and add a signing key
-gpg --quick-gen-key "Reprox" rsa4096 sign never
-gpg --armor --export-secret-keys "Reprox" | npx wrangler secret put GPG_PRIVATE_KEY
-
-# Optional: if using a GPG key that has a passphrase
-npx wrangler secret put GPG_PASSPHRASE
-
-# Optional: add GitHub token for higher rate limits (60 → 5,000 req/hr) and private repo access
-npx wrangler secret put GITHUB_TOKEN
-
-# Deploy
-npm run deploy
+# Or build and run with Docker
+docker build -t reprox:latest .
+docker run -p 8080:8080 -e GPG_PRIVATE_KEY="$(cat /path/to/private-key.asc)" reprox:latest
 ```
 
-To update manually:
-```bash
-# git clone git@github.com:leoherzog/reprox.git
-git fetch --tags && git checkout $(git tag --sort=-version:refname | head -n1) && npm install && npm run deploy
-```
+### Environment Variables
 
-I have set up automatic deployments via [Cloudflare's Git Integration](https://developers.cloudflare.com/workers/ci-cd/builds/). Feel free to do similar. Upon a new GitHub Release, the `prod` branch updates automatically and Cloudflare deploys.
+| Variable | Description |
+|---|---|
+| `PORT` | Port to listen on (default: `8080`) |
+| `HOST` | Address to listen on (default: `0.0.0.0`) |
+| `GPG_PRIVATE_KEY` | ASCII-armored GPG private key for repository signing |
+| `GPG_PASSPHRASE` | Passphrase for encrypted GPG private keys (optional) |
+| `GPG_PUBLIC_KEY` | Public key override (auto-extracted from private key if omitted) |
+| `GITHUB_TOKEN` | GitHub PAT for higher API rate limits (5,000 req/hr) and private repo access |
+| `CACHE_TTL` | Cache TTL in seconds for content (default: `86400`) |
+| `CACHE_DIR` | Directory for content-addressed blob storage (default: `${XDG_CACHE_HOME:-~/.cache}/reprox`) |
 
 ## About
 

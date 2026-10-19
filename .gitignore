@@ -1,9 +1,16 @@
-# Dependencies
-node_modules/
-
 # Build output
-dist/
-.wrangler/
+/reprox
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage
+*.test
+*.out
+coverage/
 
 # Environment and secrets
 .env
@@ -11,7 +18,6 @@ dist/
 *.pem
 *.key
 !public.key
-.dev.vars
 
 # IDE
 .idea/
@@ -25,10 +31,3 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
-
-# Test coverage
-coverage/
-
-# Generated WASM (extracted from xzwasm via postinstall)
-src/lib/xz-decompress.wasm

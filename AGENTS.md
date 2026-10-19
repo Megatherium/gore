@@ -4,40 +4,56 @@ This file provides guidance to AI Agents like Claude, Gemini, Codex, and others 
 
 ## Project Overview
 
-Reprox is a serverless APT/RPM repository gateway that transforms GitHub Releases into fully compliant package repositories on-the-fly. It runs on Cloudflare Workers, uses HTTP Range Requests to extract only package headers (avoiding full downloads), and caches metadata using the Workers Cache API.
+Reprox is a high-performance, standalone Go APT/RPM repository gateway daemon (`cmd/reprox`) that transforms GitHub Releases into fully compliant package repositories on-the-fly. It runs as a native HTTP service (`net/http`) or Docker container, uses HTTP Range Requests to extract only package headers (avoiding full downloads), and caches metadata using an in-memory TTL store with content-addressed disk backing.
 
 **Key Features:**
+- 100% native Go application (no Node.js, wrangler, or external runtimes)
 - Serves packages from **all GitHub releases** (not just the latest)
 - Supports **prerelease variant** via `/prerelease` path segment
 - **Private repository support** with auto-detection (proxies downloads with auth)
 - Only includes packages with valid **SHA256 digests** (GitHub added this feature in June 2025)
-- Excludes **draft releases** (identified by `published_at === null`)
+- Excludes **draft releases** (identified by `published_at == nil`)
 - Uses **pagination** with `per_page=100` (up to 5,000 releases max)
+- Thread-safe caching with singleflight deduplication and XDG-compliant disk persistence
 
 ## Common Commands
 
 ```bash
-npm run dev          # Start local development server (wrangler dev)
-npm run deploy       # Deploy to Cloudflare Workers
-npm run test         # Run tests with vitest
-npm run typecheck    # TypeScript type checking (tsc --noEmit)
+make build           # Build native binary to ./reprox
+make test            # Run all tests with race detector (go test -v -race ./...)
+make run             # Run local development server on :8080
+make docker-build    # Build distroless Docker image (reprox:latest)
 ```
 
 ## Architecture
 
 ### Request Flow
-1. **Entry Point** (`src/index.ts`) - Routes requests based on URL pattern, detects prerelease variant
-2. **GitHub Client** (`src/github/api.ts`) - Fetches all releases with pagination via `getAllReleases()`
-3. **Asset Aggregation** - Combines assets from all releases into a unified package list
-4. **Parsers** (`src/parsers/`) - Extract package metadata using Range Requests (64KB for .deb, 256KB for .rpm)
-5. **Generators** (`src/generators/`) - Generate repository metadata files (Packages, Release, repomd.xml, etc.)
-6. **Cache** (`src/cache/cache.ts`) - Cache API with release IDs hash validation for freshness
+1. **Entry Point** (`cmd/reprox/main.go`) - Loads configuration, initializes store, GitHub client, and GPG signer, starts HTTP server with graceful shutdown (SIGINT/SIGTERM).
+2. **URL Router** (`internal/route/route.go`) - Parses incoming request paths, detects owner, repo, distribution, architecture, variant (`stable` vs `prerelease`), and route type.
+3. **Application Service** (`internal/service/`) - Orchestrates handlers:
+   - `apt.go`: Handles `InRelease`, `Release`, `Release.gpg`, `Packages`, and `by-hash` blobs.
+   - `rpm.go`: Handles `repomd.xml`, `repomd.xml.asc`, and XML metadata blobs with Range retry ladder.
+   - `binary.go`: Handles package downloads (302 redirect for public assets, authenticated streaming proxy for private repositories).
+4. **GitHub Client** (`internal/github/client.go`) - Fetches and paginates GitHub Releases via `GetAllReleases()`, filters drafts and non-digest assets, extracts package headers via HTTP Range requests.
+5. **Parsers** (`internal/parse/`) - Extract package metadata using HTTP Range requests:
+   - `deb/deb.go`: AR archive reader (`parse/ar`) extracting `control.tar.{gz,xz,zst}` using pure-Go decoders.
+   - `rpm/rpm.go`: Binary RPM Lead & Header parser with 8-byte alignment, tag index, filelists reconstruction, and `createrepo_c` filtering.
+6. **Generators** (`internal/gen/`) - Generate deterministic repository metadata:
+   - `apt/`: `Packages` and `Release` files with multi-architecture lists and SHA256 checksums.
+   - `rpm/`: `primary.xml`, `filelists.xml`, `other.xml`, and `repomd.xml`.
+7. **Signing** (`internal/sign/gpg.go`) - Pure-Go OpenPGP signing:
+   - Cleartext signing for `InRelease`.
+   - Detached text signing (sigclass 0x01) for `Release.gpg`.
+   - Detached binary signing (sigclass 0x00) for `repomd.xml.asc`.
+   - ASCII-armored public key export and 4-character space-delimited fingerprint formatting.
+8. **Cache & Persistence** (`internal/store/`) - Thread-safe in-memory cache with TTL expiration, `singleflight.Group` deduplication, and optional disk persistence for content-addressed blobs (`packages-blob/` and `rpm/blob/`) complying with XDG Base Directory specification.
+9. **Web & Internal APIs** (`internal/web/web.go`) - Serves embedded landing page (`readme.html`), static assets (`readme.md`, `favicon.svg`), and proxies for GitHub repository search (`/_/search`) and package detection (`/_/package`).
 
 ### URL Routes
 
 **Standard (excludes prereleases):**
-- **APT**: `/{owner}/{repo}/dists/{dist}/InRelease`, `/{owner}/{repo}/pool/.../*.deb`
-- **RPM**: `/{owner}/{repo}/repodata/repomd.xml`, `/{owner}/{repo}/Packages/*.rpm`
+- **APT**: `/{owner}/{repo}/dists/{dist}/InRelease`, `/{owner}/{repo}/dists/{dist}/Release`, `/{owner}/{repo}/dists/{dist}/Release.gpg`, `/{owner}/{repo}/dists/{dist}/{component}/binary-{arch}/Packages[.gz]`, `/{owner}/{repo}/dists/{dist}/{component}/binary-{arch}/by-hash/SHA256/{sha256}`, `/{owner}/{repo}/pool/.../*.deb`
+- **RPM**: `/{owner}/{repo}/repodata/repomd.xml`, `/{owner}/{repo}/repodata/repomd.xml.asc`, `/{owner}/{repo}/repodata/{sha256}-{primary,filelists,other}.xml.gz`, `/{owner}/{repo}/Packages/*.rpm`
 - **Common**: `/{owner}/{repo}/public.key`
 
 **Prerelease Variant (includes all releases):**
@@ -46,96 +62,55 @@ npm run typecheck    # TypeScript type checking (tsc --noEmit)
 - **Common**: `/{owner}/{repo}/prerelease/public.key`
 
 **Internal API (for landing page search box):**
-- `/_/search?q={query}` - Proxies GitHub repository search with authenticated token and Cache API caching (5 min TTL)
+- `/_/search?q={query}` - Proxies GitHub repository search with authenticated token and store caching (5 min TTL)
 - `/_/package?owner={owner}&repo={repo}` - Extracts package name from latest release `.deb`/`.rpm` asset filenames, cached (5 min TTL)
 
-### Key Types
+### Key Packages & Structure
 
-**RouteInfo** (`src/types.ts`) - Parsed URL information:
-- `owner`, `repo` - GitHub repository
-- `releaseVariant` - `'stable'` (default) or `'prerelease'`
-- `type` - Route type (inrelease, packages, binary, repomd, rpm-binary, etc.)
-
-**GitHubRelease** (`src/types.ts`) - Release metadata:
-- `published_at` is `string | null` - null indicates a draft release (excluded from processing)
-
-### Key Modules
-
-**Parsers** (`src/parsers/`)
-- `ar.ts` - AR archive format (container for .deb files)
-- `tar.ts` - TAR archive format (contains control files)
-- `deb.ts` - Debian package metadata extraction
-- `rpm.ts` - RPM header parsing with binary tag structure
-
-**Generators** (`src/generators/`)
-- `packages.ts` - APT Packages file generation, `filterDebAssets()` (requires valid digest)
-- `release.ts` - APT Release/InRelease generation
-- `repodata.ts` - RPM primary.xml, filelists.xml, other.xml generation. `buildRepomd()` emits repomd.xml with hash-prefixed `<location>` paths and returns the per-section SHA256s so callers can key blob writes. `filterRpmAssets()` enforces valid digests.
-
-**Utilities** (`src/utils/`)
-- `crypto.ts` - SHA256 hashing and gzip compression (Web Crypto API)
-- `streams.ts` - Stream reading utilities (`readStreamToBuffer`, `concatUint8Arrays`)
-- `architectures.ts` - Architecture detection from filenames (Debian and RPM)
-- `xml.ts` - XML escaping and control character sanitization (removes invalid XML 1.0 chars)
-- `concurrency.ts` - Concurrency-limited Promise execution (`mapWithConcurrency`, `mapWithConcurrencyFiltered`) to avoid Cloudflare subrequest limits
-
-**Other**
-- `src/signing/gpg.ts` - OpenPGP signing (cleartext and detached)
-- `src/github/api.ts` - GitHub API client with `getAllReleases()` pagination
-- `src/cache/cache.ts` - Cache API wrapper with variant-aware keys
-- `src/lib/xz.ts` - XZ decompression wrapper for Workers (see below)
-
-**Landing Page** (`scripts/build-readme.ts` → `src/generated/readme-html.ts`)
-- Build script reads `README.md`, renders to HTML via `marked` with syntax highlighting, inlines and optimizes all CSS (PurgeCSS + cssnano), and exports a static HTML string
-- Injects an interactive search box after the "Usage" heading that lets visitors search for GitHub repos and auto-fill `{owner}`, `{repo}`, `{package}` placeholders throughout the page
-- The search box CSS uses `github-markdown-css` v5 custom properties for automatic dark mode; semantic HTML (`<strong>`, `<small>`, `<a>`) leverages upstream styles where possible
-- Client-side JS uses `TreeWalker` for text node replacement (preserves DOM/event listeners) and `display: none` to hide instruction comments when a repo is selected
-- All CSS classes used by the search box must appear in the `searchBoxSkeleton` variable so PurgeCSS preserves them
-- The `/_/search` and `/_/package` endpoints in `src/index.ts` proxy GitHub API calls server-side using `GITHUB_TOKEN` for higher rate limits, with Cache API caching
+```
+cmd/reprox/main.go            # Daemon entry point, signal handling
+internal/
+  config/config.go            # Environment variable parsing & XDG paths
+  route/route.go              # URL routing & path decomposition
+  github/client.go            # GitHub API client, pagination, Range requests
+  parse/
+    ar/ar.go                  # Pure-Go AR archive parser
+    deb/deb.go                # Debian package & control extractor
+    rpm/rpm.go                # Binary RPM header & tag parser
+  gen/
+    apt/                      # Packages and Release generator
+    rpm/                      # repomd, primary, filelists, other XML generator
+  sign/gpg.go                 # OpenPGP signing (cleartext & detached)
+  store/                      # Cache store interface & in-memory/disk implementation
+  service/                    # HTTP handlers (APT, RPM, binary proxy)
+  web/web.go                  # Landing page handler & static assets
+  xutil/                      # Cryptography, XML sanitization, arch detection
+```
 
 ### Design Patterns
 
-**Multi-Release Aggregation:**
-- `getAllReleases()` fetches all releases with pagination (`per_page=100`, max 50 pages = 5,000 releases)
-- `aggregateAssets()` flattens assets from all releases with release context
-- Draft filtering: releases with `published_at === null` are always excluded
-- Prerelease filtering: `includePrerelease` parameter controls whether to include prereleases
+**Deterministic Metadata Snapshots:**
+- Go map iteration is randomized by default. All package lists, architectures, and XML elements are explicitly sorted (by package name, version, architecture, and filepath) prior to serialization.
+- Metadata snapshots are byte-identical across runs and server instances for the same release inputs.
+
+**Blob-Before-Index Invariant:**
+- Metadata files containing checksums (`Release`, `InRelease`, `repomd.xml`) reference content-addressed data files (`Packages`, `primary.xml.gz`, etc.).
+- Reprox strictly writes and persists all content-addressed blobs (`packages-blob/...`, `rpm/blob/...`) to the store *before* writing the referencing index file (`Release`, `repomd.xml`). This guarantees that any client fetching an index file will never encounter a 404 or checksum mismatch when requesting child files.
+
+**Acquire-By-Hash & Immutable Content-Addressing:**
+- APT: `Acquire-By-Hash: yes` is advertised in `Release`. `Packages` files are stored as immutable blobs keyed by SHA256 (`packages-blob/{variant}/{owner}/{repo}/{sha256}`).
+- RPM: Uses Fedora's `unique_md_filenames` convention — `repomd.xml` references `repodata/{sha256}-primary.xml.gz`. Blobs are stored under `rpm/blob/{variant}/{owner}/{repo}/{sha256}`.
+- Legacy URLs (e.g. `binary-{arch}/Packages[.gz]`) parse the current Release file to extract the current SHA256 and serve the corresponding immutable blob, avoiding race conditions during refreshes.
+
+**Deterministic RPM Error Handling & Range Ladder:**
+- RPM headers are initially fetched with a 256KB Range request. If truncated (`ErrRpmHeaderTruncated`), the request retries with 1MB, 4MB, and 16MB ranges; a header still exceeding the ladder aborts the snapshot with `IncompleteSnapshotError` (never silently dropped).
+- If a package header cannot be fetched due to transient network failures, it retries with exponential backoff (250ms base, 3 attempts). If still failing, the snapshot aborts with `IncompleteSnapshotError` (HTTP 503 + `Retry-After: 5`). Reprox **never silently drops a package** due to fetch failures, preventing corrupt or incomplete repository states.
+- Successfully parsed headers are cached under `rpm/entry/{owner}/{repo}/{sha256}/{filename}` so retries do not repeat work.
 
 **Private Repository Support:**
-- Auto-detects repo privacy using HEAD request to check URL accessibility
-- Public repos: 302 redirect to GitHub's CDN (offloads bandwidth)
-- Private repos: Proxies download through Worker with `Authorization: token` header
-- Requires `GITHUB_TOKEN` for private repo access
-
-**Digest Filtering:**
-- GitHub added SHA256 digests to release assets in June 2025
-- `filterDebAssets()` and `filterRpmAssets()` only include packages with valid `digest` field
-- Older releases without digests are excluded (package managers require valid checksums)
-
-**Cache Strategy:**
-- All cache keys include `variant` (stable/prerelease) for isolation
-- `computeReleaseIdsHash()` (async) computes SHA256 of release IDs + asset digests for cache invalidation
-- Asset URLs are cached for efficient binary redirects
-- Background validation refreshes cache without blocking requests
-- RPM metadata files (primary/filelists/other, both .xml and .xml.gz) are stored as **content-addressed blobs** keyed by their SHA256. `repomd.xml` references them via `<location href="repodata/{sha256}-primary.xml.gz"/>` (Fedora's `unique_md_filenames` convention). Blobs are immutable — a client holding any historical `repomd.xml` resolves its references against the exact bytes that were hashed into it, eliminating the race where background refresh could update `primary.xml.gz` between a client's `repomd.xml` fetch and its follow-up fetches.
-
-**Deterministic RPM Snapshots:**
-- The Cache API is per-colo, and a client can fetch `repomd.xml` and `repomd.xml.asc` from different colos. The signature only verifies if every colo builds byte-identical `repomd.xml` for the same release list.
-- A header fetch that fails is retried, then aborts the build with `IncompleteSnapshotError` (503 with `Retry-After`). Never drop a package because of a fetch failure, and never cache a snapshot built without one.
-- Packages are dropped only for reasons that hold in every colo: no digest, unparseable header, header past the range ladder.
-- Parsed headers are cached per asset digest, so an aborted build keeps its progress and the retry fetches only what failed.
-- `repomd.xml` and its signature share one cache entry. A background refresh that fails leaves the previous snapshot in place.
-
-**Concurrency Limiting:**
-- Cloudflare Workers has subrequest limits (50 free tier, 1000 paid)
-- `mapWithConcurrencyFiltered()` processes assets with limited parallelism (default: 30)
-- Prevents hitting subrequest limits when processing many packages
-
-**Range Requests:** Only fetches package headers to minimize bandwidth (64KB for .deb, 256KB for .rpm)
-
-**Architecture Detection:** Parses architecture from filename patterns
-- Debian: amd64, arm64, i386, armhf, all
-- RPM: x86_64, aarch64, i686, noarch
+- Detects repository privacy via HEAD request.
+- Public repositories: 302 redirect to GitHub's CDN (`browser_download_url`).
+- Private repositories: Streams binary package data through the daemon with GitHub token authorization.
 
 ### Cache Keys
 
@@ -153,204 +128,25 @@ All cache keys include the release variant for proper isolation:
 | RPM Blob (content-addressed) | `rpm/blob/{variant}/{owner}/{repo}/{sha256}` |
 | RPM Package Entry (parsed header, keyed by asset digest) | `rpm/entry/{owner}/{repo}/{sha256}/{filename}` |
 
-The legacy `binary-{arch}/Packages[.gz]` URL has no dedicated mutable key — `handlePackages`/`handlePackagesGz` parses the current cached `Release`, extracts the SHA256 for the requested path, and serves the content-addressed blob. This inherits the blob cache's immutability: a concurrent refresh producing a newer Release cannot corrupt in-flight client responses.
-
-### Cloudflare Workers Considerations
-
-**Static WASM Imports**: Workers blocks dynamic `WebAssembly.instantiate()` for security (similar to `eval()`). WASM modules must be imported statically at build time.
-
-**Compression Support**: .deb control archives can use different compression formats:
-- `control.tar.gz` - gzip (most common, native DecompressionStream)
-- `control.tar.xz` - XZ (uses xzwasm with static WASM import)
-- `control.tar.zst` - Zstandard (uses fzstd library)
-- `control.tar` - uncompressed
-
-**XZ WASM Handling** (`src/lib/xz.ts`): The xzwasm library embeds WASM as base64 and uses dynamic instantiation, which doesn't work in Workers. Our solution:
-1. `scripts/extract-xz-wasm.cjs` extracts the WASM binary from xzwasm on `npm install` (postinstall hook)
-2. `src/lib/xz.ts` imports the WASM statically and patches `XzReadableStream._moduleInstance` before use
-3. The extracted `src/lib/xz-decompress.wasm` is gitignored (auto-generated)
-
-If xzwasm is updated, running `npm install` will automatically extract the new WASM version.
-
 ## Environment Variables
-
-Optional secrets (set via `wrangler secret put`):
-- `GPG_PRIVATE_KEY` - Armored GPG private key for repository signing (public key is auto-extracted)
-- `GPG_PASSPHRASE` - Passphrase for encrypted GPG private keys (optional, only needed if key is passphrase-protected)
-- `GPG_PUBLIC_KEY` - Armored GPG public key (optional override, normally extracted from private key)
-- `GITHUB_TOKEN` - GitHub personal access token for higher API rate limits and private repository access
-- `CACHE_TTL` - Cache TTL in seconds for content (default: 86400). Release IDs hash uses a 5-minute TTL for freshness checks.
-
-## Testing
-
-Tests use Vitest with `@cloudflare/vitest-plugin` to run in a Workers-like environment. Test files are in `test/` directory.
-
-```bash
-npm run test                    # Run all tests
-npx vitest run parsers.test.ts  # Run specific test file
-npx vitest --watch              # Watch mode
-
-# Run with integration tests (requires GitHub token for API access)
-GITHUB_TOKEN=<token> RUN_INTEGRATION_TESTS=true npm test
-```
-
-Integration tests in `test/integration/` fetch real packages from GitHub releases to verify parsing works with actual .deb and .rpm files.
-
-## Deployment
-
-### Prerequisites
-
-- Node.js 18.0.0 or higher
-- A Cloudflare account (free tier works)
-- `wrangler` CLI (installed via npm as a dev dependency)
-- (Optional) GPG for generating signing keys
-
-### Step-by-Step Deployment
-
-1. **Clone and install dependencies**
-
-   ```bash
-   git clone https://github.com/leoherzog/reprox.git
-   cd reprox
-   npm install
-   ```
-
-   The `postinstall` script automatically extracts the XZ WASM binary from xzwasm for static import (required for Cloudflare Workers).
-
-2. **Authenticate with Cloudflare**
-
-   ```bash
-   npx wrangler login
-   ```
-
-   This opens a browser for OAuth authentication with your Cloudflare account.
-
-3. **Configure worker name (optional)**
-
-   Edit `wrangler.toml` to customize the worker name:
-   ```toml
-   name = "my-reprox-instance"
-   ```
-
-   Default name is `reprox`. The worker will be accessible at `https://{name}.{account-subdomain}.workers.dev`.
-
-4. **Generate and configure GPG signing key**
-
-   Repositories should be GPG-signed for package manager verification:
-
-   ```bash
-   # Generate a new GPG key (no passphrase for simplicity, or use one)
-   gpg --quick-gen-key "My Reprox Instance" rsa4096 sign never
-
-   # Export and set as secret
-   gpg --armor --export-secret-keys "My Reprox Instance" | npx wrangler secret put GPG_PRIVATE_KEY
-
-   # If your key has a passphrase, also set it
-   npx wrangler secret put GPG_PASSPHRASE
-   ```
-
-   Alternatively, import an existing key:
-   ```bash
-   cat /path/to/private-key.asc | npx wrangler secret put GPG_PRIVATE_KEY
-   ```
-
-5. **Configure GitHub token (recommended)**
-
-   A GitHub personal access token increases API rate limits from 60 to 5,000 requests/hour. This is especially important for repositories with lots of Releases, given many API calls and pagination:
-
-   ```bash
-   npx wrangler secret put GITHUB_TOKEN
-   ```
-
-   Create a token at https://github.com/settings/tokens with no special permissions (public repo access only).
-
-6. **Deploy to Cloudflare Workers**
-
-   ```bash
-   npm run deploy
-   ```
-
-   The CLI outputs the worker URL upon successful deployment.
-
-### Secrets Reference
-
-Set secrets using `npx wrangler secret put <NAME>`:
-
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `GPG_PRIVATE_KEY` | Recommended | ASCII-armored GPG private key for repository signing |
-| `GPG_PASSPHRASE` | If key is encrypted | Passphrase for the GPG private key |
-| `GPG_PUBLIC_KEY` | No | Override auto-extracted public key (rarely needed) |
-| `GITHUB_TOKEN` | Recommended | GitHub PAT for higher API rate limits and private repo access |
-
-### Environment Variables
-
-Set in `wrangler.toml` under `[vars]`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `PORT` | `8080` | Port for the HTTP daemon to listen on |
+| `GITHUB_TOKEN` | *empty* | GitHub Personal Access Token (recommended for higher rate limits & private repos) |
+| `GPG_PRIVATE_KEY` | *empty* | ASCII-armored GPG private key for signing repositories |
+| `GPG_PASSPHRASE` | *empty* | Passphrase for encrypted GPG private keys |
+| `GPG_PUBLIC_KEY` | *empty* | Optional override for public key (extracted from private key if omitted) |
 | `CACHE_TTL` | `86400` | Cache TTL in seconds for repository content (24 hours) |
+| `CACHE_DIR` | `${XDG_CACHE_HOME:-~/.cache}/reprox` | Directory for persisting immutable blobs to disk |
+| `MAX_CONCURRENCY` | `30` | Maximum concurrent goroutines for GitHub API asset requests |
 
-### Custom Domain Setup
-
-1. Add a custom domain in Cloudflare Workers dashboard → your worker → Triggers → Custom Domains
-2. Or use `wrangler.toml`:
-   ```toml
-   routes = [
-     { pattern = "packages.example.com/*", zone_name = "example.com" }
-   ]
-   ```
-
-### Verifying Deployment
-
-Test that the worker is running:
+## Testing
 
 ```bash
-# Should return usage instructions
-curl https://your-worker.workers.dev/
+make test                     # Run all unit tests with race detection
+go test -v ./internal/parse/deb   # Run tests for a specific package
 
-# Test a real repository (replace with an actual GitHub repo with .deb/.rpm releases)
-curl https://your-worker.workers.dev/{owner}/{repo}/public.key
-curl https://your-worker.workers.dev/{owner}/{repo}/dists/stable/InRelease
-
-# Test prerelease variant (includes prereleases)
-curl https://your-worker.workers.dev/{owner}/{repo}/prerelease/dists/stable/InRelease
+# Integration tests with real GitHub releases
+GITHUB_TOKEN=<token> RUN_INTEGRATION_TESTS=true go test -v ./...
 ```
-
-### Updating
-
-```bash
-git pull
-npm install        # Re-extracts WASM if xzwasm updated
-npm run deploy
-```
-
-### Local Development
-
-```bash
-npm run dev        # Starts local dev server with wrangler
-npm run test       # Run test suite
-npm run typecheck  # TypeScript type checking
-```
-
-## Important Implementation Notes
-
-### Digest Requirement
-
-GitHub added SHA256 digests to release assets in June 2025. Packages from older releases that lack digests are **excluded** from the repository because package managers (apt, dnf) require valid checksums. This is intentional - there's no way to verify package integrity without checksums.
-
-### Pagination Limits
-
-The `getAllReleases()` function has a `MAX_PAGES = 50` limit to prevent infinite loops and API exhaustion. With `per_page=100`, this allows up to 5,000 releases per repository.
-
-### Cache Consistency
-
-Metadata files containing checksums (Release, InRelease, repomd.xml) reference other files (Packages, primary.xml, etc.). Sequential client fetches — DNF does `repomd.xml` → `primary.xml.gz` → packages — must see a consistent snapshot, or the client will reject a checksum mismatch.
-
-**APT**: `Acquire-By-Hash: yes` is advertised in `Release`, and Packages files (both uncompressed and `.gz`) are stored as **immutable, content-addressed blobs** under `packages-blob/{variant}/{owner}/{repo}/{sha256}`. `handleByHash` is a pure cache lookup — given a hash pinned by any (In)Release a client holds, it returns the exact bytes that were hashed, or 404 if the blob has aged out. `generateAndCacheAll()` and `generateReleaseContent()` write these blobs BEFORE writing the (In)Release/Release.gpg that reference them, so any client reading a cached Release can always resolve every by-hash URL. The legacy non-by-hash URL `binary-{arch}/Packages[.gz]` is served the same way: `handlePackages`/`handlePackagesGz` parses the current cached Release, extracts the path's SHA256, and returns the blob — so non-by-hash clients see a fresh-Release-matching body as well. There is no separate mutable `packages/.../{arch}` key.
-
-**RPM**: Uses Fedora's `unique_md_filenames` convention — `repomd.xml` references `repodata/{sha256}-primary.xml.gz` (and filelists/other). The XML files are stored as **immutable, content-addressed blobs** under `rpm/blob/{variant}/{owner}/{repo}/{sha256}`, so any `repomd.xml` a client holds (stale or fresh) resolves to the exact bytes that were hashed into it. `buildRpmSnapshot()` generates everything from scratch in one pass; `cacheRpmSnapshot()` writes blobs before `repomd.xml` so references are always resolvable.
-
-**Stale-While-Revalidate**: The cache uses a stale-while-revalidate pattern — cached content is returned immediately while freshness is validated in background. For RPM (always), APT by-hash, and APT non-by-hash (because the legacy URL also serves via blob lookup against the current Release) this is race-free by construction: blobs are content-addressed and immutable, and every path pinned by a Release exists before the Release itself is written. The only remaining race is the normal one inherent to stale-while-revalidate: a client can fetch Release v1, then fetch Packages after the server has refreshed to v2. Under `Acquire-By-Hash` (default `yes` in apt ≥ 1.2, released April 2016) the client uses the v1 hash and gets v1 bytes; non-by-hash clients get v2 bytes (matching v2's current Release, not v1's) and will pick up v2 on their next refresh round. For immediate invalidation, use `?cache=false`.
-
-**Why this matters (the bug this design fixes)**: before content-addressing, a DNF update fetching a repo immediately after a new GitHub release could get a stale `repomd.xml` referencing v1 checksums, then follow up with `primary.xml.gz` after the background refresh had already written v2 bytes under the same URL. DNF would compute the v2 checksum, compare against v1, and fail with `Downloading successful, but checksum doesn't match`. The APT analogue was `Hash Sum mismatch` — a client reads cached `InRelease` v1 (pinning v1 `Packages` SHA256), the background refresh rewrites the mutable `packages/.../{arch}` key with v2 bytes, then the client fetches the Packages file and apt computes v2's SHA256 against v1's pin and aborts. Hashed filenames + immutable blobs (RPM `rpm/blob/...`, APT `packages-blob/...`) make both races impossible. The mutable `packages/.../{arch}` key has been eliminated entirely: the legacy non-by-hash URL now serves the same content-addressed blob that `handleByHash` does, resolved by reading the current Release's SHA256 — so even a non-by-hash client sees a self-consistent `(Release, Packages)` snapshot per request.
