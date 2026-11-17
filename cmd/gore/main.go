@@ -11,18 +11,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/config"
-	"github.com/leoherzog/reprox/internal/github"
-	"github.com/leoherzog/reprox/internal/service"
-	"github.com/leoherzog/reprox/internal/sign"
-	"github.com/leoherzog/reprox/internal/store"
-	"github.com/leoherzog/reprox/internal/web"
+	"github.com/Megatherium/gore/internal/config"
+	"github.com/Megatherium/gore/internal/github"
+	"github.com/Megatherium/gore/internal/service"
+	"github.com/Megatherium/gore/internal/sign"
+	"github.com/Megatherium/gore/internal/store"
+	"github.com/Megatherium/gore/internal/web"
 )
 
 func main() {
 	cfg := config.Load()
 
-	log.Printf("Starting Reprox server on %s:%s (CacheDir=%s, CacheTTL=%s)",
+	log.Printf("Starting gore server on %s:%s (CacheDir=%s, CacheTTL=%s)",
 		cfg.Host, cfg.Port, cfg.CacheDir, cfg.CacheTTL)
 
 	// Initialize GitHub Client
@@ -82,10 +82,10 @@ func main() {
 		}
 	}()
 
-	log.Printf("Reprox listening on http://%s:%s", cfg.Host, cfg.Port)
+	log.Printf("gore listening on http://%s:%s", cfg.Host, cfg.Port)
 
 	<-shutdown
-	log.Println("Shutting down Reprox...")
+	log.Println("Shutting down gore...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -94,5 +94,5 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	log.Println("Reprox stopped gracefully.")
+	log.Println("gore stopped gracefully.")
 }

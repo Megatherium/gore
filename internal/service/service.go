@@ -10,10 +10,10 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/leoherzog/reprox/internal/github"
-	"github.com/leoherzog/reprox/internal/route"
-	"github.com/leoherzog/reprox/internal/sign"
-	"github.com/leoherzog/reprox/internal/store"
+	"github.com/Megatherium/gore/internal/github"
+	"github.com/Megatherium/gore/internal/route"
+	"github.com/Megatherium/gore/internal/sign"
+	"github.com/Megatherium/gore/internal/store"
 )
 
 var (

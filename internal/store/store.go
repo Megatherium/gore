@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 // Entry represents a cached response or metadata blob.
@@ -80,7 +80,7 @@ func ComputeReleaseIdsHash(releases []GitHubReleaseMinimal) string {
 	return fullHash
 }
 
-// Cache Key Builders matching Reprox specifications
+// Cache Key Builders matching gore specifications
 func PackagesBlobKey(variant, owner, repo, sha256 string) string {
 	return fmt.Sprintf("packages-blob/%s/%s/%s/%s", variant, owner, repo, sha256)
 }

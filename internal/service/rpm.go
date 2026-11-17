@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	rpmGen "github.com/leoherzog/reprox/internal/gen/rpm"
-	"github.com/leoherzog/reprox/internal/github"
-	rpmParser "github.com/leoherzog/reprox/internal/parse/rpm"
-	"github.com/leoherzog/reprox/internal/route"
-	"github.com/leoherzog/reprox/internal/store"
-	"github.com/leoherzog/reprox/internal/xutil"
+	rpmGen "github.com/Megatherium/gore/internal/gen/rpm"
+	"github.com/Megatherium/gore/internal/github"
+	rpmParser "github.com/Megatherium/gore/internal/parse/rpm"
+	"github.com/Megatherium/gore/internal/route"
+	"github.com/Megatherium/gore/internal/store"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 var rpmRangeLadder = []int{

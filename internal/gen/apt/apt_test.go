@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/gen/apt"
-	"github.com/leoherzog/reprox/internal/parse/deb"
+	"github.com/Megatherium/gore/internal/gen/apt"
+	"github.com/Megatherium/gore/internal/parse/deb"
 )
 
 func TestGeneratePackageEntry(t *testing.T) {

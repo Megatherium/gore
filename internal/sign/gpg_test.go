@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Megatherium/gore/internal/sign"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
 	"github.com/ProtonMail/go-crypto/openpgp/clearsign"
-	"github.com/leoherzog/reprox/internal/sign"
 )
 
 func generateTestKey(t *testing.T, passphrase string) (string, string) {
 	t.Helper()
 
-	entity, err := openpgp.NewEntity("Test User", "Reprox Test", "test@example.com", nil)
+	entity, err := openpgp.NewEntity("Test User", "gore Test", "test@example.com", nil)
 	if err != nil {
 		t.Fatalf("openpgp.NewEntity error: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestGpgSigning(t *testing.T) {
 	}
 
 	t.Run("SignCleartext", func(t *testing.T) {
-		content := "Origin: reprox\nSuite: stable\n"
+		content := "Origin: gore\nSuite: stable\n"
 		signed, err := signer.SignCleartext(content)
 		if err != nil {
 			t.Fatalf("SignCleartext error: %v", err)

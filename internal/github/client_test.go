@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/github"
+	"github.com/Megatherium/gore/internal/github"
 )
 
 func TestGitHubClientPaginationAndFiltering(t *testing.T) {

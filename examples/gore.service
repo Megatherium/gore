@@ -1,0 +1,77 @@
+# Example systemd unit for a self-hosted gore daemon.
+#
+# Install the binary and a system user, then enable the unit:
+#
+#   sudo install -m 0755 gore /usr/local/bin/gore
+#   sudo useradd --system --home-dir /var/lib/gore --create-home \
+#       --shell /usr/sbin/nologin gore
+#   sudo install -d -o root -g gore -m 0750 /etc/gore
+#   sudo install -o root -g gore -m 0640 /path/to/private-key.asc \
+#       /etc/gore/private-key.asc
+#   sudo cp examples/gore.service /etc/systemd/system/gore.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now gore.service
+#
+# Optional /etc/gore/environment (mode 0640, root:gore), one assignment
+# per line. systemd cannot store multiline values here. The armored private
+# key is read from /etc/gore/private-key.asc instead.
+#
+#   GITHUB_TOKEN=ghp_...
+#   GPG_PASSPHRASE=...
+#   GPG_PUBLIC_KEY=...          # optional override
+#   PORT=8080
+#   HOST=0.0.0.0                # use 127.0.0.1 behind a reverse proxy
+#   CACHE_TTL=86400
+#
+# The key file and the environment file are both optional. Without a private
+# key, gore still serves repositories and logs that signing is disabled.
+
+[Unit]
+Description=gore GitHub Releases APT/RPM gateway
+Documentation=https://github.com/Megatherium/gore
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gore
+Group=gore
+WorkingDirectory=/var/lib/gore
+CacheDirectory=gore
+StateDirectory=gore
+
+Environment=CACHE_DIR=/var/cache/gore
+EnvironmentFile=-/etc/gore/environment
+
+# EnvironmentFile cannot hold the multiline armored key. Read it here and
+# replace the shell so SIGTERM reaches gore (it shuts down within 30s).
+ExecStart=/bin/sh -c 'if [ -r /etc/gore/private-key.asc ]; then export GPG_PRIVATE_KEY="$$(cat /etc/gore/private-key.asc)"; fi; exec /usr/local/bin/gore'
+
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=40s
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectClock=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

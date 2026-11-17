@@ -1,4 +1,4 @@
-module github.com/leoherzog/reprox
+module github.com/Megatherium/gore
 
 go 1.27.2
 

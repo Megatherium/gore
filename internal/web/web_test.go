@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/github"
-	"github.com/leoherzog/reprox/internal/store"
-	"github.com/leoherzog/reprox/internal/web"
+	"github.com/Megatherium/gore/internal/github"
+	"github.com/Megatherium/gore/internal/store"
+	"github.com/Megatherium/gore/internal/web"
 )
 
 func TestWebHandler(t *testing.T) {
@@ -85,7 +85,7 @@ func TestWebHandler(t *testing.T) {
 		if !strings.Contains(rec.Header().Get("Content-Type"), "text/markdown") {
 			t.Errorf("expected text/markdown Content-Type")
 		}
-		if !strings.Contains(rec.Body.String(), "# 📦 Reprox") {
+		if !strings.Contains(rec.Body.String(), "# 📦 gore") {
 			t.Errorf("missing Markdown title in output")
 		}
 	})

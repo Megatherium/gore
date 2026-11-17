@@ -4,7 +4,7 @@ This file provides guidance to AI Agents like Claude, Gemini, Codex, and others 
 
 ## Project Overview
 
-Reprox is a high-performance, standalone Go APT/RPM repository gateway daemon (`cmd/reprox`) that transforms GitHub Releases into fully compliant package repositories on-the-fly. It runs as a native HTTP service (`net/http`) or Docker container, uses HTTP Range Requests to extract only package headers (avoiding full downloads), and caches metadata using an in-memory TTL store with content-addressed disk backing.
+gore is a high-performance, standalone Go APT/RPM repository gateway daemon (`cmd/gore`) that transforms GitHub Releases into fully compliant package repositories on-the-fly. It runs as a native HTTP service (`net/http`) or Docker container, uses HTTP Range Requests to extract only package headers (avoiding full downloads), and caches metadata using an in-memory TTL store with content-addressed disk backing.
 
 **Key Features:**
 - 100% native Go application (no Node.js, wrangler, or external runtimes)
@@ -19,16 +19,16 @@ Reprox is a high-performance, standalone Go APT/RPM repository gateway daemon (`
 ## Common Commands
 
 ```bash
-make build           # Build native binary to ./reprox
+make build           # Build native binary to ./gore
 make test            # Run all tests with race detector (go test -v -race ./...)
 make run             # Run local development server on :8080
-make docker-build    # Build distroless Docker image (reprox:latest)
+make docker-build    # Build distroless Docker image (gore:latest)
 ```
 
 ## Architecture
 
 ### Request Flow
-1. **Entry Point** (`cmd/reprox/main.go`) - Loads configuration, initializes store, GitHub client, and GPG signer, starts HTTP server with graceful shutdown (SIGINT/SIGTERM).
+1. **Entry Point** (`cmd/gore/main.go`) - Loads configuration, initializes store, GitHub client, and GPG signer, starts HTTP server with graceful shutdown (SIGINT/SIGTERM).
 2. **URL Router** (`internal/route/route.go`) - Parses incoming request paths, detects owner, repo, distribution, architecture, variant (`stable` vs `prerelease`), and route type.
 3. **Application Service** (`internal/service/`) - Orchestrates handlers:
    - `apt.go`: Handles `InRelease`, `Release`, `Release.gpg`, `Packages`, and `by-hash` blobs.
@@ -68,7 +68,7 @@ make docker-build    # Build distroless Docker image (reprox:latest)
 ### Key Packages & Structure
 
 ```
-cmd/reprox/main.go            # Daemon entry point, signal handling
+cmd/gore/main.go            # Daemon entry point, signal handling
 internal/
   config/config.go            # Environment variable parsing & XDG paths
   route/route.go              # URL routing & path decomposition
@@ -95,7 +95,7 @@ internal/
 
 **Blob-Before-Index Invariant:**
 - Metadata files containing checksums (`Release`, `InRelease`, `repomd.xml`) reference content-addressed data files (`Packages`, `primary.xml.gz`, etc.).
-- Reprox strictly writes and persists all content-addressed blobs (`packages-blob/...`, `rpm/blob/...`) to the store *before* writing the referencing index file (`Release`, `repomd.xml`). This guarantees that any client fetching an index file will never encounter a 404 or checksum mismatch when requesting child files.
+- gore strictly writes and persists all content-addressed blobs (`packages-blob/...`, `rpm/blob/...`) to the store *before* writing the referencing index file (`Release`, `repomd.xml`). This guarantees that any client fetching an index file will never encounter a 404 or checksum mismatch when requesting child files.
 
 **Acquire-By-Hash & Immutable Content-Addressing:**
 - APT: `Acquire-By-Hash: yes` is advertised in `Release`. `Packages` files are stored as immutable blobs keyed by SHA256 (`packages-blob/{variant}/{owner}/{repo}/{sha256}`).
@@ -104,7 +104,7 @@ internal/
 
 **Deterministic RPM Error Handling & Range Ladder:**
 - RPM headers are initially fetched with a 256KB Range request. If truncated (`ErrRpmHeaderTruncated`), the request retries with 1MB, 4MB, and 16MB ranges; a header still exceeding the ladder aborts the snapshot with `IncompleteSnapshotError` (never silently dropped).
-- If a package header cannot be fetched due to transient network failures, it retries with exponential backoff (250ms base, 3 attempts). If still failing, the snapshot aborts with `IncompleteSnapshotError` (HTTP 503 + `Retry-After: 5`). Reprox **never silently drops a package** due to fetch failures, preventing corrupt or incomplete repository states.
+- If a package header cannot be fetched due to transient network failures, it retries with exponential backoff (250ms base, 3 attempts). If still failing, the snapshot aborts with `IncompleteSnapshotError` (HTTP 503 + `Retry-After: 5`). gore **never silently drops a package** due to fetch failures, preventing corrupt or incomplete repository states.
 - Successfully parsed headers are cached under `rpm/entry/{owner}/{repo}/{sha256}/{filename}` so retries do not repeat work.
 
 **Private Repository Support:**
@@ -138,7 +138,7 @@ All cache keys include the release variant for proper isolation:
 | `GPG_PASSPHRASE` | *empty* | Passphrase for encrypted GPG private keys |
 | `GPG_PUBLIC_KEY` | *empty* | Optional override for public key (extracted from private key if omitted) |
 | `CACHE_TTL` | `86400` | Cache TTL in seconds for repository content (24 hours) |
-| `CACHE_DIR` | `${XDG_CACHE_HOME:-~/.cache}/reprox` | Directory for persisting immutable blobs to disk |
+| `CACHE_DIR` | `${XDG_CACHE_HOME:-~/.cache}/gore` | Directory for persisting immutable blobs to disk |
 | `MAX_CONCURRENCY` | `30` | Maximum concurrent goroutines for GitHub API asset requests |
 
 ## Testing

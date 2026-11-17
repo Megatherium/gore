@@ -3,7 +3,7 @@
 all: build test
 
 build:
-	go build -v -trimpath ./cmd/reprox
+	go build -v -trimpath ./cmd/gore
 
 test:
 	go test -v -race ./...
@@ -13,10 +13,10 @@ lint:
 	gofmt -l internal cmd
 
 run: build
-	./reprox
+	./gore
 
 docker-build:
-	docker build -t reprox:latest .
+	docker build -t gore:latest .
 
 clean:
-	rm -f reprox
+	rm -f gore

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/parse/rpm"
+	"github.com/Megatherium/gore/internal/parse/rpm"
 )
 
 type tagEntry struct {

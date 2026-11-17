@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/gen/apt"
-	"github.com/leoherzog/reprox/internal/github"
-	"github.com/leoherzog/reprox/internal/parse/deb"
-	"github.com/leoherzog/reprox/internal/route"
-	"github.com/leoherzog/reprox/internal/store"
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/gen/apt"
+	"github.com/Megatherium/gore/internal/github"
+	"github.com/Megatherium/gore/internal/parse/deb"
+	"github.com/Megatherium/gore/internal/route"
+	"github.com/Megatherium/gore/internal/store"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 var (

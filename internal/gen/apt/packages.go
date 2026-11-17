@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/leoherzog/reprox/internal/parse/deb"
+	"github.com/Megatherium/gore/internal/parse/deb"
 )
 
 // PackageEntry represents a single package for Debian Packages file.

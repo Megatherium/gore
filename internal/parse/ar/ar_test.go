@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/parse/ar"
+	"github.com/Megatherium/gore/internal/parse/ar"
 )
 
 func createTestAr(files []struct {

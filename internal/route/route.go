@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// RouteType identifies the parsed Reprox route.
+// RouteType identifies the parsed gore route.
 type RouteType string
 
 const (

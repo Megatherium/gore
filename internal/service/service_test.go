@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Megatherium/gore/internal/github"
+	"github.com/Megatherium/gore/internal/service"
+	"github.com/Megatherium/gore/internal/sign"
+	"github.com/Megatherium/gore/internal/store"
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
-	"github.com/leoherzog/reprox/internal/github"
-	"github.com/leoherzog/reprox/internal/service"
-	"github.com/leoherzog/reprox/internal/sign"
-	"github.com/leoherzog/reprox/internal/store"
 )
 
 func createTestDeb(pkg, ver, arch string) []byte {
@@ -120,7 +120,7 @@ func TestServiceAptEndpoints(t *testing.T) {
 		t.Fatalf("NewMemoryStore error: %v", err)
 	}
 
-	entity, err := openpgp.NewEntity("Reprox", "Test", "reprox@example.com", nil)
+	entity, err := openpgp.NewEntity("gore", "Test", "gore@example.com", nil)
 	if err != nil {
 		t.Fatalf("openpgp.NewEntity error: %v", err)
 	}

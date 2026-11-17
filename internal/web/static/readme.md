@@ -1,9 +1,11 @@
-# 📦 Reprox — A Serverless Github Releases APT/RPM Gateway
-https://github.com/leoherzog/reprox
+# 📦 gore — A GitHub Releases APT/RPM Gateway
+https://github.com/Megatherium/gore
 
-There are many great Linux softwares that distribute .deb and/or .rpm packages via Github Releases only. Reprox turns any GitHub repository that uses Releases into a fully compliant APT (deb) or RPM repository. Package downloads redirect straight to GitHub's CDN, moving the trust model from the maintainer of an APT/RPM repository to the maintainer of the GitHub repository.
+There are many great Linux softwares that distribute .deb and/or .rpm packages via Github Releases only. gore turns any GitHub repository that uses Releases into a fully compliant APT (deb) or RPM repository. Package downloads redirect straight to GitHub's CDN, moving the trust model from the maintainer of an APT/RPM repository to the maintainer of the GitHub repository.
 
-I made this for my own personal use, so I didn't have to "Watch" for new Github Releases and manually download/install updates. I recognize that I am man-in-the-middling the traditional trust model for package repositories. Be careful to add only trusted, official upstream Github repositories. If you're worried about me man-in-the-middleing you, skip ahead to [the Self-Hosting section](#self-hosting).
+gore is a from-scratch Go rewrite of [Reprox](https://github.com/leoherzog/reprox), the original Cloudflare Workers gateway by [Leo Herzog](https://herzog.tech). It keeps the same URL layout and behavior, but ships as a single static binary or Docker container you run yourself — no serverless platform, no Node.js, no external runtimes.
+
+A repository gateway sits between you and GitHub, so add only trusted, official upstream Github repositories. Package integrity is still guaranteed by the signed repository metadata; since you host gore yourself, you control the signing key and the trust root.
 
 Supports all Releases since [June 2025](https://github.blog/changelog/2025-06-03-releases-now-expose-digests-for-release-assets/).
 
@@ -70,7 +72,7 @@ sudo apt update && sudo apt install {package}
 # 
 sudo tee /etc/yum.repos.d/{repo}.repo << EOF
 [{repo}]
-name={repo} from GitHub via Reprox
+name={repo} from GitHub via gore
 baseurl={{BASE_URL}}/{owner}/{repo}
 enabled=1
 gpgcheck=0
@@ -85,51 +87,33 @@ sudo dnf install {package}
 # {{FINGERPRINT_COMMENT}}
 ```
 > [!NOTE]
-> `gpgcheck=0` disables individual package signature verification because Reprox serves packages from GitHub without re-signing. Package integrity is still verified via checksums in the signed repository metadata (`repo_gpgcheck=1`).
+> `gpgcheck=0` disables individual package signature verification because gore serves packages from GitHub without re-signing. Package integrity is still verified via checksums in the signed repository metadata (`repo_gpgcheck=1`).
 
 ## Self-Hosting
 
-Feel free to use my instance at reprox.dev, or run your own instance on Cloudflare Workers:
+gore is a self-hosted daemon: a single static binary (or distroless Docker image) that listens on HTTP and serves repositories for any GitHub owner/repo pair. This page is served by one such instance — clone and run your own:
 
 ### Prerequisites
 
-- Node.js 18+
-- A [Cloudflare account](https://dash.cloudflare.com/sign-up)
+- Go 1.27+ (or Docker / Podman)
 - GPG (for generating signing keys)
 
 ### Quick Start
 
 ```bash
-# Clone and install
-git clone git@github.com:leoherzog/reprox.git && cd reprox && npm install
+# Clone and build
+git clone https://github.com/Megatherium/gore.git && cd gore
+make build
 
-# Login to Cloudflare
-npx wrangler login
+# Generate a signing key (optional; without one, repositories are served unsigned)
+gpg --quick-gen-key "gore" rsa4096 sign never
 
-# Generate and add a signing key
-gpg --quick-gen-key "Reprox" rsa4096 sign never
-gpg --armor --export-secret-keys "Reprox" | npx wrangler secret put GPG_PRIVATE_KEY
-
-# Optional: if using a GPG key that has a passphrase
-npx wrangler secret put GPG_PASSPHRASE
-
-# Optional: add GitHub token for higher rate limits (60 → 5,000 req/hr) and private repo access
-npx wrangler secret put GITHUB_TOKEN
-
-# Deploy
-npm run deploy
+# Run
+GPG_PRIVATE_KEY="$(gpg --armor --export-secret-keys 'gore')" ./gore
 ```
 
-To update manually:
-```bash
-# git clone git@github.com:leoherzog/reprox.git
-git fetch --tags && git checkout $(git tag --sort=-version:refname | head -n1) && npm install && npm run deploy
-```
-
-I have set up automatic deployments via [Cloudflare's Git Integration](https://developers.cloudflare.com/workers/ci-cd/builds/). Feel free to do similar. Upon a new GitHub Release, the `prod` branch updates automatically and Cloudflare deploys.
+A hardened systemd unit is included in `examples/gore.service`, and configuration is done via environment variables (`PORT`, `GITHUB_TOKEN`, `CACHE_TTL`, and friends — see the README).
 
 ## About
 
-♥ [Leo Herzog](https://herzog.tech)
-
-🍵 [Buy me a tea!](https://herzog.tech/$)
+gore is a Go rewrite of [Reprox](https://github.com/leoherzog/reprox) by [Leo Herzog](https://herzog.tech), preserving its routes, metadata formats, and signing behavior. The original is MIT-licensed; so is this rewrite.

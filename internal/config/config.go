@@ -38,7 +38,7 @@ func Load() *Config {
 		}
 	}
 
-	// XDG Cache Home fallback: "${XDG_CACHE_HOME:-$HOME/.cache}/reprox"
+	// XDG Cache Home fallback: "${XDG_CACHE_HOME:-$HOME/.cache}/gore"
 	cacheDir := os.Getenv("CACHE_DIR")
 	if cacheDir == "" {
 		xdgCache := os.Getenv("XDG_CACHE_HOME")
@@ -46,7 +46,7 @@ func Load() *Config {
 			home := os.Getenv("HOME")
 			xdgCache = filepath.Join(home, ".cache")
 		}
-		cacheDir = filepath.Join(xdgCache, "reprox")
+		cacheDir = filepath.Join(xdgCache, "gore")
 	}
 
 	return &Config{

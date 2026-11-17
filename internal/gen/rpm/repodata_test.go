@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	rpmGen "github.com/leoherzog/reprox/internal/gen/rpm"
-	rpmParser "github.com/leoherzog/reprox/internal/parse/rpm"
+	rpmGen "github.com/Megatherium/gore/internal/gen/rpm"
+	rpmParser "github.com/Megatherium/gore/internal/parse/rpm"
 )
 
 func TestRepodataGenerators(t *testing.T) {
@@ -18,8 +18,8 @@ func TestRepodataGenerators(t *testing.T) {
 			Arch:          "x86_64",
 			Summary:       "A test package",
 			Description:   "Description of test package",
-			Packager:      "Reprox",
-			Vendor:        "Reprox Vendor",
+			Packager:      "gore",
+			Vendor:        "gore Vendor",
 			License:       "MIT",
 			Group:         "Utilities",
 			Url:           "https://example.com",

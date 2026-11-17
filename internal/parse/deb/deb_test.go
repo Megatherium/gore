@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Megatherium/gore/internal/parse/deb"
 	"github.com/klauspost/compress/zstd"
-	"github.com/leoherzog/reprox/internal/parse/deb"
 	"github.com/ulikunitz/xz"
 )
 

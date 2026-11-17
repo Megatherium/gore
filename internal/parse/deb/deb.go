@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Megatherium/gore/internal/parse/ar"
 	"github.com/klauspost/compress/zstd"
-	"github.com/leoherzog/reprox/internal/parse/ar"
 	"github.com/ulikunitz/xz"
 )
 

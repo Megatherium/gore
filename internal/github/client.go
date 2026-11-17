@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 const (
 	APIBaseURL = "https://api.github.com"
 	MaxPages   = 50
-	UserAgent  = "Reprox/1.0"
+	UserAgent  = "gore/1.0"
 )
 
 // GitHubAsset represents a binary asset uploaded to a release.

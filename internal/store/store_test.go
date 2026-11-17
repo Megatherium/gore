@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/store"
+	"github.com/Megatherium/gore/internal/store"
 )
 
 func TestComputeReleaseIdsHash(t *testing.T) {
@@ -43,7 +43,7 @@ func TestComputeReleaseIdsHash(t *testing.T) {
 }
 
 func TestMemoryStore(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "reprox-store-test-*")
+	tmpDir, err := os.MkdirTemp("", "gore-store-test-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp error: %v", err)
 	}

@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 func TestCrypto(t *testing.T) {

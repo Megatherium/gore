@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/route"
-	"github.com/leoherzog/reprox/internal/store"
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/route"
+	"github.com/Megatherium/gore/internal/store"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 // hopByHopHeaders must not be forwarded when proxying upstream responses.

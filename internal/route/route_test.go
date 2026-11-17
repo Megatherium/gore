@@ -3,7 +3,7 @@ package route_test
 import (
 	"testing"
 
-	"github.com/leoherzog/reprox/internal/route"
+	"github.com/Megatherium/gore/internal/route"
 )
 
 func TestParseRoute(t *testing.T) {

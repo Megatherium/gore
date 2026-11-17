@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leoherzog/reprox/internal/xutil"
+	"github.com/Megatherium/gore/internal/xutil"
 )
 
 // ReleaseConfig holds repository metadata configuration for Release/InRelease generation.
@@ -114,6 +114,6 @@ func DefaultReleaseConfig(owner string, repo string) ReleaseConfig {
 		Codename:      "stable",
 		Architectures: []string{"amd64", "arm64", "i386", "all"},
 		Components:    []string{"main"},
-		Description:   fmt.Sprintf("APT repository for %s/%s hosted on Reprox", owner, repo),
+		Description:   fmt.Sprintf("APT repository for %s/%s hosted on gore", owner, repo),
 	}
 }
